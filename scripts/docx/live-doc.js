@@ -21,8 +21,18 @@ function timestamp() {
 }
 
 function openFile(filePath) {
+  // प्रत्येक OS ची फाईल उघडायची कमांड वेगळी आहे —
+  //   Windows: start   |   macOS: open   |   Linux: xdg-open
+  // (आधी फक्त `start` होते, त्यामुळे Mac वर "start: command not found" येत होते.)
+  const cmd =
+    process.platform === "win32"
+      ? `start "" "${filePath}"`
+      : process.platform === "darwin"
+        ? `open "${filePath}"`
+        : `xdg-open "${filePath}"`;
+
   try {
-    exec(`start "" "${filePath}"`, (err) => {
+    exec(cmd, (err) => {
       if (err) console.error("फाईल उघडता आली नाही (दुर्लक्ष करा, चालू राहील):", err.message);
     });
   } catch (err) {
@@ -107,8 +117,15 @@ async function append({ title, text, color }) {
 }
 
 async function finish() {
+  // active document नसणे ही **चूक मानायची नाही.** हा workflow चा शेवटचा टप्पा
+  // आहे; इथे error टाकला तर संपूर्ण run अपयशी ठरतो — जरी सर्व titles यशस्वी
+  // झालेले असले तरी. असे कधी होते:
+  //   • Excel मध्ये एकही PENDING title नव्हता (loop लगेच संपला)
+  //   • मध्येच server restart झाला (आधीचा state हरवला)
+  //   • /doc/finish दुसऱ्यांदा कॉल झाला
+  // अशा वेळी शांतपणे ok:false सांगतो, run चालू राहतो.
   if (!current) {
-    throw new Error("कोणताही active document नाही (आधी /doc/start झालेच नाही).");
+    return { docxPath: null, txtPath: null, nothingToFinish: true };
   }
   await saveDocx();
   const result = { docxPath: current.docxPath, txtPath: current.txtPath };

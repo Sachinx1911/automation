@@ -17,14 +17,30 @@ const fs = require("fs");
 const readline = require("readline");
 const { SHARED_PROFILE, URLS, assertConfigured } = require("./profile-paths");
 
-const CHROME_PATHS = [
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-];
+// Chrome प्रत्येक OS वर वेगळ्या जागी असतो — तिन्हीच्या नेहमीच्या जागा तपासतो.
+// (आधी फक्त Windows चे paths होते, त्यामुळे Mac/Linux वर "Chrome सापडला नाही"
+//  असे म्हणून ही स्क्रिप्ट थांबत असे.)
+const CHROME_PATHS = {
+  win32: [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    `${process.env.LOCALAPPDATA || ""}\\Google\\Chrome\\Application\\chrome.exe`,
+  ],
+  darwin: [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    `${process.env.HOME || ""}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
+  ],
+  linux: [
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+  ],
+};
 
 function findChrome() {
-  for (const p of CHROME_PATHS) {
-    if (fs.existsSync(p)) return p;
+  for (const p of CHROME_PATHS[process.platform] || CHROME_PATHS.linux) {
+    if (p && fs.existsSync(p)) return p;
   }
   return null;
 }

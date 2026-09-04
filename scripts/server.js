@@ -55,10 +55,38 @@ const CHAT_ROUTES = {
   "/chat/claude": chatClaude,
 };
 
+// ---------------------------------------------------------------------------
+// टेस्टसाठी: credit संपल्याचे **नाटक** करण्याचा स्विच.
+//
+// का: "credit संपले -> workflow थांबतो -> credit आले -> आपोआप पुढे चालू होतो"
+// हा मार्ग तपासायचा असेल तर एरवी खरोखर credits संपेपर्यंत वाट बघावी लागेल.
+// हा स्विच चालू केला की /chat/claude ब्राउझरला हातही न लावता लगेच तोच
+// 429 CREDIT_LIMIT प्रतिसाद देतो जो खऱ्या वेळी येतो.
+//
+//   चालू : curl -X POST localhost:5959/test/credit-limit -d '{"on":true}'
+//   बंद  : curl -X POST localhost:5959/test/credit-limit -d '{"on":false}'
+//   स्थिती: curl localhost:5959/test/credit-limit
+// ---------------------------------------------------------------------------
+let simulateCreditLimit = false;
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") {
       return sendJson(res, 200, { ok: true });
+    }
+
+    if (req.url === "/test/credit-limit") {
+      if (req.method === "GET") {
+        return sendJson(res, 200, { simulateCreditLimit });
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        simulateCreditLimit = body.on === true;
+        console.log(
+          `[${new Date().toLocaleTimeString()}] TEST: credit-limit नाटक ${simulateCreditLimit ? "चालू" : "बंद"}`
+        );
+        return sendJson(res, 200, { ok: true, simulateCreditLimit });
+      }
     }
 
     if (req.method === "POST" && CHAT_ROUTES[req.url]) {
@@ -70,7 +98,38 @@ const server = http.createServer(async (req, res) => {
       const name = req.url.split("/").pop(); // gemini | grok | claude
       console.log(`[${new Date().toLocaleTimeString()}] ${req.url} <- "${text.slice(0, 80)}${text.length > 80 ? "..." : ""}"`);
 
-      const response = await runQueued(name, () => CHAT_ROUTES[req.url](text));
+      // टेस्ट स्विच चालू असेल तर Claude ला खरा कॉल न करता credit संपल्याचे नाटक
+      if (simulateCreditLimit && name === "claude") {
+        const resetsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        console.log(`[${new Date().toLocaleTimeString()}] TEST: /chat/claude -> बनावट CREDIT_LIMIT`);
+        return sendJson(res, 429, {
+          error: "CREDIT_LIMIT",
+          message: `CREDIT_LIMIT: simulated_for_test (रीसेट: ${resetsAt})`,
+          resetsAt,
+          remaining: 0,
+          simulated: true,
+        });
+      }
+
+      let response;
+      try {
+        response = await runQueued(name, () => CHAT_ROUTES[req.url](text));
+      } catch (err) {
+        // credit/usage limit संपल्याचा वेगळा (429) status — सामान्य 500 अपयशापासून
+        // वेगळा ठेवतो जेणेकरून n8n workflow मध्ये यावरच थांबा (Wait) ओळखता येतो.
+        if (err.message && err.message.startsWith("CREDIT_LIMIT")) {
+          console.log(`[${new Date().toLocaleTimeString()}] ${req.url} -> CREDIT_LIMIT: ${err.message}`);
+          return sendJson(res, 429, {
+            error: "CREDIT_LIMIT",
+            message: err.message,
+            // Claude स्वतः सांगतो की मर्यादा कधी रीसेट होईल — ती वेळ पुढे
+            // पाठवतो जेणेकरून n8n च्या execution log मध्ये दिसेल.
+            resetsAt: err.resetsAt ?? null,
+            remaining: err.remaining ?? null,
+          });
+        }
+        throw err;
+      }
       console.log(`[${new Date().toLocaleTimeString()}] ${req.url} -> उत्तर मिळाले (${response.length} अक्षरे)`);
 
       return sendJson(res, 200, { response });
@@ -96,7 +155,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/doc/finish") {
       const paths = await liveDoc.finish();
-      console.log(`[${new Date().toLocaleTimeString()}] /doc/finish -> ${paths.docxPath}`);
+      console.log(
+        `[${new Date().toLocaleTimeString()}] /doc/finish -> ` +
+          (paths.nothingToFinish
+            ? "बंद करण्यासारखे काही नव्हते (एकही title प्रोसेस झाला नाही?)"
+            : paths.docxPath)
+      );
 
       // सर्व titles संपले — आता Gemini/Grok/Claude चे tabs/ब्राउझर बंद करतो
       closeAllContexts()

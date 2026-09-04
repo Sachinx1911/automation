@@ -1,9 +1,9 @@
 {
-  "name": "Excel -> Gemini+Grok -> Claude -> Word",
+  "name": "[TEST] Credit-limit pause/resume (1 min wait)",
   "nodes": [
     {
       "parameters": {
-        "formTitle": "Excel Upload",
+        "formTitle": "[TEST] Excel Upload",
         "formDescription": "Titles असलेली Excel फाईल अपलोड करा (Status = PENDING असलेल्याच रांगा घेतल्या जातील)",
         "formFields": {
           "values": [
@@ -32,7 +32,7 @@
         -620,
         300
       ],
-      "webhookId": "a1b2c3d4-0001-4000-8000-000000000001"
+      "webhookId": "b1b2c3d4-0001-4000-8000-000000000011"
     },
     {
       "parameters": {
@@ -362,7 +362,7 @@
             {
               "id": "cf2",
               "leftValue": "={{ $runIndex }}",
-              "rightValue": 8,
+              "rightValue": 4,
               "operator": {
                 "type": "number",
                 "operation": "lt"
@@ -385,7 +385,7 @@
     {
       "parameters": {
         "resume": "timeInterval",
-        "amount": 30,
+        "amount": 1,
         "unit": "minutes",
         "options": {}
       },
@@ -397,7 +397,7 @@
         1060,
         660
       ],
-      "webhookId": "a1b2c3d4-0002-4000-8000-000000000002"
+      "webhookId": "b1b2c3d4-0002-4000-8000-000000000012"
     },
     {
       "parameters": {

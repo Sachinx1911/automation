@@ -19,9 +19,17 @@ const SHARED_PROFILE = path.join(PROFILE_ROOT, "shared");
 //      Claude: https://claude.ai/chat/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 // ==========================================================================
 const URLS = {
-  gemini: "https://gemini.google.com/app/da06efc242925252",
+  // "चालू घडामोडी मास्टर प्रॉम्प्ट निर्देश" — खाते: aivideo369 (Pro)
+  // (जुनी URL da06efc242925252 आता चालत नाही; Gemini गुपचूप /app वर — म्हणजे
+  //  रिकाम्या नव्या chat वर — नेत होता. यादी बघण्यासाठी:
+  //  node scripts/browser/list-gemini-chats.js)
+  gemini: "https://gemini.google.com/app/377e9dd3722261b2",
   grok: "https://grok.com/c/5b8debc2-8368-45ac-a24c-c6d74dcc33a3",
-  claude: "https://claude.ai/chat/887f9197-e276-4491-8685-8dea9bdae1da",
+  // "चालू घडामोडी नोट्स तयार करण्याचे मास्टर निर्देश" — खाते: aivideoteam369@gmail.com
+  // (जुनी URL 887f9197-… या खात्यात नव्हती; Claude "Conversation not found" देऊन
+  //  /new वर नेत होता. chat हरवली तर `node scripts/browser/list-chats.js` ने
+  //  सध्याच्या सर्व chats च्या खऱ्या URLs बघता येतात.)
+  claude: "https://claude.ai/chat/d514db8c-5d47-4342-b813-ac7200f75d81",
 };
 
 function assertConfigured() {

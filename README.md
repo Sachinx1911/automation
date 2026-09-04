@@ -79,13 +79,25 @@ tabs च्या पूर्ण लिंक्स टाका. (लिंक
 ## पायरी 3 — प्रत्येक AI मध्ये एकदा manually login करा
 
 ```bash
-npm run login:gemini
-npm run login:grok
-npm run login:claude
+npm run login
 ```
 
-खराखुरा Chrome उघडेल — login करा, विंडो बंद करा, टर्मिनलमध्ये Enter दाबा. **एकदाच**,
-प्रति मशीन.
+खराखुरा Chrome उघडेल — त्याच एका विंडोमध्ये **Gemini, Grok आणि Claude तिन्हीमध्ये**
+login करा, मग विंडो बंद करून टर्मिनलमध्ये Enter दाबा. **एकदाच, प्रति मशीन.**
+
+तिन्ही AI एकच Chrome profile वापरतात, त्यामुळे एकाच वेळी तिन्ही login करावे लागतात.
+हे login `.browser-profiles/` मध्ये साठते, जे git मध्ये जात नाही — म्हणून **प्रत्येक
+नव्या मशीनवर (Windows असो वा Mac) हे पुन्हा करावे लागते.**
+
+### URLs किंवा login तपासायचे असल्यास
+
+```bash
+npm run check:urls
+```
+
+तिन्ही chat URLs खरंच उघडतात का, login आहे का — हे तपासते (कोणताही संदेश पाठवत नाही).
+URL जुनी झाली असल्यास खरी URL शोधण्यासाठी `npm run list:chats` (Claude) किंवा
+`npm run list:gemini`.
 
 ## पायरी 4 — स्क्रिप्ट्स स्वतंत्रपणे टेस्ट करा
 
@@ -125,6 +137,24 @@ npm run server
   फाईल तयार होते.
 - सर्व titles संपल्यावर workflow आपोआप फाईल अंतिम रूपात save करते (`/doc/finish`).
 
+## Claude चे credit/usage limit संपल्यास — आपोआप थांबा (pause) आणि resume
+
+Claude ने "usage limit reached" सारखा मजकूर दाखवला (credit संपले), तर workflow
+इतर titles वर उगाच वेळ न घालवता **तिथेच थांबते** — n8n च्या `Wait for Claude Credits`
+नोडमध्ये (Waiting Executions मध्ये दिसेल, n8n restart झाले तरी टिकते).
+
+- credit परत आल्यावर तो execution **resume** करा (त्या नोडची Webhook/Resume URL
+  कॉल करून, किंवा नोड उघडून "Limit Wait Time" आधीच चालू केले असल्यास ठराविक
+  तासांनी आपोआप resume होईल).
+- resume झाल्यावर **तोच title** पुन्हा Claude कडे जातो — आधीचे पूर्ण झालेले titles
+  पुन्हा प्रोसेस होत नाहीत, पुढचेही वाया जात नाहीत (loop तिथूनच पुढे चालू होतो).
+- Claude चा नेहमीचा (credit शी संबंध नसलेला) एखादा तात्पुरता error असेल — ३
+  प्रयत्नांनंतरही — तर आधीचीच पद्धत लागू होते: Gemini+Grok चा raw मजकूर लाल
+  रंगात सेव्ह होऊन पुढच्या title कडे जाते, workflow थांबत नाही.
+- ओळखण्याची पद्धत मजकूर-आधारित आहे (`scripts/browser/claude-chat.js` मधील
+  `usageLimitPatterns`) — Claude ने नेमके शब्द बदलल्यास (उदा. नवीन UI) तिथे
+  अपडेट करावे लागेल.
+
 ## रंग-कोड
 
 - **काळा मजकूर** — Claude कडून यशस्वी अंतिम उत्तर आले.
@@ -152,13 +182,50 @@ n8n मध्ये त्या नोडवर उजवे-क्लिक ->
 - **Claude Existing Chat** बंद केल्यास → Gemini+Grok चा एकत्र मजकूर थेट (लाल रंगात)
   Word फाईलमध्ये सेव्ह होईल.
 
+## Claude चे उत्तर कसे वाचले जाते (DOM नाही — network)
+
+Claude चे उत्तर पेजवरचा मजकूर वाचून घेतले **जात नाही**. ते थेट network वरून
+घेतले जाते, कारण उत्तर पेजवर दिसण्याआधी तिथूनच येते:
+
+```
+POST /api/organizations/{orgId}/chat_conversations/{chatId}/completion   (SSE)
+```
+
+- या stream मधून **फक्त दोन गोष्टी** घेतल्या जातात — `stop_reason` (उत्तर पूर्ण
+  झाले का) आणि `message_limit` (credit शिल्लक आहे का). दोन्ही ASCII आहेत.
+- **खरा मजकूर** मात्र पेजच्या आतून `fetch()` करून conversation च्या JSON
+  endpoint मधून घेतला जातो. *(SSE मधून मजकूर घेतला तर मराठी अक्षरे बिघडतात —
+  `text/event-stream` ला charset नसल्याने तो latin-1 धरला जातो.)*
+
+यामुळे मिळालेले फायदे:
+
+- CSS class, "Copy" बटण, hover, clipboard — **यापैकी काहीही लागत नाही**
+- **कच्चा markdown** टिकतो (`##`, `**`, `◾`) — DOM च्या innerText मध्ये तो हरवत होता
+- उत्तर संपल्याची **नक्की** खूण मिळते; "मजकूर वाढणे थांबले का" असा अंदाज लावत
+  दर 1.5 सेकंदाला तपासावे लागत नाही → प्रति title काही सेकंद वाचतात
+- credit संपल्याचे Claude स्वतः सांगतो — "usage limit reached" असे **शब्द शोधावे
+  लागत नाहीत** (ते शब्द बदलले तरी काही बिघडत नाही)
+
+संदेश **पाठवण्यासाठी** मात्र अजूनही पेजवरचेच selectors वापरले जातात — पण ते
+accessibility-आधारित (`aria-label`, `data-testid`) असल्याने बरेच स्थिर आहेत.
+
+अडचण आल्यास दोन साधने आहेत (दोन्ही फक्त वाचतात, काहीही बदलत नाहीत):
+
+```bash
+node scripts/browser/list-chats.js      # तुमच्या सर्व Claude chats च्या खऱ्या URLs
+node scripts/browser/probe-claude.js --no-send   # chat उघडते का + login तपासते
+```
+
 ## मर्यादा / लक्षात ठेवण्यासारखे
 
 - **`npm run server` चालू असल्याशिवाय n8n workflow चालणार नाही.**
 - **`profile-paths.js` मध्ये तिन्ही chat tabs च्या URL भरलेल्या असणे आवश्यक.**
 - प्रत्येक AI ला जसाच्या तसा मजकूर पाठवला जातो — कोणताही wrapper प्रॉम्प्ट लावला जात
   नाही; त्या conversation मध्ये तुम्ही आधीच सूचना दिलेल्या असाव्यात.
-- ब्राउझर UI बदलले की selectors अपडेट करावे लागतील (`scripts/browser/*.js`).
+- **Gemini/Grok** चे उत्तर पेजवरून (DOM selectors ने) वाचले जाते — त्या साईटचे UI
+  बदलले की `scripts/browser/gemini-chat.js` / `grok-chat.js` मधले selectors अपडेट
+  करावे लागतील. **Claude मात्र यावर अवलंबून नाही** — त्याचे उत्तर थेट network
+  मधून घेतले जाते (खाली पहा).
 - एका वेळी एकाच AI साठी एकच automation call चालतो (queue प्रणाली) — त्याच AI ची
   दुसरी विनंती आधीची संपेपर्यंत थांबते (एकाच Chrome profile वर दोन automation
   instances एकत्र चालत नाहीत म्हणून).

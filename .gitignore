@@ -23,3 +23,9 @@ npm-debug.log*
 # स्थानिक बॅकअप आर्काइव्ह
 *.rar
 *.zip
+
+# प्रत्येक मशीनच्या स्वतःच्या chat URLs (खाजगी)
+chat-urls.json
+
+# स्थानिक साधनांचा डेटा
+.tokensave/

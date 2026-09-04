@@ -12,7 +12,10 @@
     "test:grok": "node scripts/browser/grok-chat.js \"Test title from automation\"",
     "test:claude": "node scripts/browser/claude-chat.js \"Test title from automation\"",
     "docx:recover": "node scripts/docx/from-progress.js",
-    "postinstall": "patchright install chrome"
+    "postinstall": "patchright install chrome",
+    "check:urls": "node scripts/browser/check-urls.js",
+    "list:chats": "node scripts/browser/list-chats.js",
+    "list:gemini": "node scripts/browser/list-gemini-chats.js"
   },
   "dependencies": {
     "docx": "^9.1.1",
