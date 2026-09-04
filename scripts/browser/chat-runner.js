@@ -229,25 +229,43 @@ async function runChat(opts) {
       }
 
       // Claude ने स्वतः सांगितलेली मर्यादा — शब्द शोधण्याची गरज नाही
-      if (result.limit && result.limit.type && result.limit.type !== "within_limit") {
-        const resetsAt = result.limit.resetsAt;
-        const err = new Error(
-          `CREDIT_LIMIT: ${result.limit.type}${resetsAt ? ` (रीसेट: ${resetsAt})` : ""}`
-        );
-        // caller (server.js -> n8n) ला रीसेटची वेळ कळावी म्हणून वेगळी फील्ड
-        err.resetsAt = resetsAt || null;
-        err.remaining = result.limit.remaining ?? null;
-        throw err;
-      }
       if (result.streamError) {
         throw new Error(`Claude stream error: ${result.streamError}`);
       }
 
       // stream पूर्ण झाला — आता खरा मजकूर पेजच्या आतून (बरोबर encoding सह)
       const finalText = await fetchLastAssistantText(page, result.completionUrl);
-      if (!finalText || !finalText.trim()) {
+      const limit = result.limit;
+
+      // ---- मर्यादेचा निर्णय ----
+      // महत्त्वाचे: `message_limit.type` फक्त "within_limit" नाही म्हणजे credits
+      // संपले असे **नाही**. उदा. "approaching_limit" म्हणजे नुसता इशारा —
+      // Claude तेव्हा उत्तर देतोच. आधी असे उत्तरही फेकून देऊन workflow थांबत होता.
+      //
+      // म्हणून खरा निकष मजकूर आहे: उत्तर मिळाले असेल तर ते वापरायचे (इशारा
+      // असला तरी). उत्तर मिळालेच नाही आणि मर्यादा सांगितली असेल, तरच थांबायचे.
+      const gotText = Boolean(finalText && finalText.trim());
+
+      if (!gotText) {
+        if (limit && limit.type && limit.type !== "within_limit") {
+          const err = new Error(
+            `CREDIT_LIMIT: ${limit.type}${limit.resetsAt ? ` (रीसेट: ${formatResetTime(limit.resetsAt)})` : ""}`
+          );
+          err.resetsAt = limit.resetsAt || null;
+          err.remaining = limit.remaining ?? null;
+          throw err;
+        }
         throw new Error(
           `उत्तर रिकामे मिळाले (stop_reason: ${result.stopReason || "अज्ञात"}).`
+        );
+      }
+
+      // उत्तर मिळाले — पण मर्यादा जवळ आली असल्यास फक्त इशारा नोंदवतो
+      if (limit && limit.type && limit.type !== "within_limit") {
+        console.log(
+          `  इशारा: Claude ची मर्यादा जवळ आली आहे (${limit.type}` +
+            `${limit.remaining != null ? `, शिल्लक: ${limit.remaining}` : ""}` +
+            `${limit.resetsAt ? `, रीसेट: ${formatResetTime(limit.resetsAt)}` : ""}). काम चालू आहे.`
         );
       }
 
@@ -353,6 +371,15 @@ const CLAUDE_LIMIT_FALLBACK_PATTERNS = [
   /you'?re out of (?:free )?(?:messages|credits)[^.\n]*/i,
   /limit (?:will )?reset(?:s)? at[^.\n]*/i,
 ];
+
+// Claude चा resetsAt कधी unix seconds (उदा. 1788565800) तर कधी ISO string
+// म्हणून येतो — दोन्ही वाचनीय स्वरूपात दाखवतो.
+function formatResetTime(resetsAt) {
+  if (resetsAt == null) return "";
+  const n = Number(resetsAt);
+  const d = Number.isFinite(n) && n > 0 ? new Date(n * 1000) : new Date(resetsAt);
+  return isNaN(d.getTime()) ? String(resetsAt) : d.toLocaleString();
+}
 
 // SSE (text/event-stream) मजकूर पार्स करून त्यातून उत्तर + स्थिती काढते
 function parseClaudeStream(body) {
