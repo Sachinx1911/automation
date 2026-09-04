@@ -1,0 +1,240 @@
+{
+  "name": "Excel -> Gemini/Grok/Claude Chain -> Word",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Excel Upload",
+        "formDescription": "Titles असलेली Excel फाईल अपलोड करा",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Excel File",
+              "fieldType": "file",
+              "requiredField": true,
+              "acceptFileTypes": ".xlsx,.xls"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1",
+      "name": "Upload Excel",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [-2400, 0],
+      "webhookId": "excel-upload-form"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$binary['Excel_File'].fileExtension}}",
+              "rightValue": "xlsx",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "2",
+      "name": "Detect Excel File",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-2160, 0]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "binaryPropertyName": "Excel_File",
+        "options": {}
+      },
+      "id": "3",
+      "name": "Read Excel",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [-1920, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "f1",
+              "leftValue": "={{$json.Status}}",
+              "rightValue": "PENDING",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4",
+      "name": "Get PENDING Titles",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [-1680, -100]
+    },
+    {
+      "parameters": { "batchSize": 1, "options": {} },
+      "id": "5",
+      "name": "Loop Over Titles",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-1440, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/chat/gemini",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('Loop Over Titles').item.json.Title }) }}",
+        "options": { "timeout": 200000 }
+      },
+      "id": "6",
+      "name": "Gemini Existing Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-1200, -200],
+      "notes": "मूळ Title तुमच्या Gemini chat tab ला पाठवतो. Windows वर 'npm run server' चालू असणे आवश्यक."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/chat/grok",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.response }) }}",
+        "options": { "timeout": 200000 }
+      },
+      "id": "8",
+      "name": "Grok Existing Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-960, -200],
+      "notes": "Gemini कडून आलेले उत्तर तुमच्या Grok chat tab ला पाठवतो."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/chat/claude",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.response }) }}",
+        "options": { "timeout": 200000 }
+      },
+      "id": "10",
+      "name": "Claude Existing Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-720, -200],
+      "notes": "Grok कडून आलेले उत्तर तुमच्या Claude chat tab ला पाठवतो — तिथून येणारे उत्तर हेच अंतिम निकाल."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "title",
+              "type": "string",
+              "value": "={{$('Loop Over Titles').item.json.Title}}"
+            },
+            {
+              "id": "a1",
+              "name": "output",
+              "type": "string",
+              "value": "={{$json.response}}"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "11",
+      "name": "Collect Final Outputs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-480, -200]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "results",
+        "options": {}
+      },
+      "id": "12",
+      "name": "Aggregate All Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [-1200, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/create-docx",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ results: $json.results }) }}",
+        "options": { "timeout": 200000 }
+      },
+      "id": "14",
+      "name": "Create DOCX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-960, 100],
+      "notes": "प्रत्येक title साठी अंतिम (Claude) उत्तर घेऊन एकच Word फाईल output फोल्डरमध्ये तयार करतो."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r1",
+              "name": "resultFile",
+              "type": "string",
+              "value": "={{$json.path}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "15",
+      "name": "Final Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-480, 100]
+    }
+  ],
+  "connections": {
+    "Upload Excel": { "main": [[{ "node": "Detect Excel File", "type": "main", "index": 0 }]] },
+    "Detect Excel File": { "main": [[{ "node": "Read Excel", "type": "main", "index": 0 }]] },
+    "Read Excel": { "main": [[{ "node": "Get PENDING Titles", "type": "main", "index": 0 }]] },
+    "Get PENDING Titles": { "main": [[{ "node": "Loop Over Titles", "type": "main", "index": 0 }]] },
+    "Loop Over Titles": {
+      "main": [
+        [{ "node": "Aggregate All Results", "type": "main", "index": 0 }],
+        [{ "node": "Gemini Existing Chat", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini Existing Chat": { "main": [[{ "node": "Grok Existing Chat", "type": "main", "index": 0 }]] },
+    "Grok Existing Chat": { "main": [[{ "node": "Claude Existing Chat", "type": "main", "index": 0 }]] },
+    "Claude Existing Chat": { "main": [[{ "node": "Collect Final Outputs", "type": "main", "index": 0 }]] },
+    "Collect Final Outputs": { "main": [[{ "node": "Loop Over Titles", "type": "main", "index": 0 }]] },
+    "Aggregate All Results": { "main": [[{ "node": "Create DOCX", "type": "main", "index": 0 }]] },
+    "Create DOCX": { "main": [[{ "node": "Final Result", "type": "main", "index": 0 }]] }
+  }
+}

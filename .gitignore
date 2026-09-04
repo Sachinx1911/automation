@@ -1,0 +1,25 @@
+# ब्राउझर login sessions — यात Google/X/Anthropic खात्यांच्या cookies आणि
+# session data असतो. हे कधीही git मध्ये टाकू नये.
+.browser-profiles/
+
+# npm packages
+node_modules/
+
+# तयार झालेल्या Word फाईल्स आणि चालू run चा progress
+output/
+tmp/
+
+# Word चे तात्पुरते lock files
+~$*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+
+# स्थानिक बॅकअप आर्काइव्ह
+*.rar
+*.zip

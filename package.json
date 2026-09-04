@@ -1,0 +1,21 @@
+{
+  "name": "excel-ai-content-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Excel titles -> Gemini/Grok/Claude (existing browser chat) -> combined Word document, driven by local n8n",
+  "type": "commonjs",
+  "scripts": {
+    "server": "node scripts/server.js",
+    "clean": "node scripts/clean.js",
+    "login": "node scripts/browser/login-setup.js",
+    "test:gemini": "node scripts/browser/gemini-chat.js \"Test title from automation\"",
+    "test:grok": "node scripts/browser/grok-chat.js \"Test title from automation\"",
+    "test:claude": "node scripts/browser/claude-chat.js \"Test title from automation\"",
+    "docx:recover": "node scripts/docx/from-progress.js",
+    "postinstall": "patchright install chrome"
+  },
+  "dependencies": {
+    "docx": "^9.1.1",
+    "patchright": "^1.62.2"
+  }
+}

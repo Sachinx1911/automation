@@ -1,0 +1,51 @@
+// server अडकला/क्रॅश झाला, किंवा "port already in use" सारखा error आला, तर हे
+// चालवा — port मोकळा करते आणि उघडे राहिलेले Chrome processes बंद करते.
+//
+// वापर: npm run clean
+
+const { spawnSync } = require("child_process");
+
+function runPS(script) {
+  const res = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf-8",
+  });
+  return (res.stdout || "").trim();
+}
+
+function killPids(pids, label) {
+  pids.forEach((pid) => {
+    console.log(`${label} (PID ${pid}) बंद करतो...`);
+    runPS(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`);
+  });
+}
+
+function killPort(port) {
+  console.log(`\nport ${port} वर काही चालू आहे का तपासतो...`);
+  const out = runPS(
+    `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique`
+  );
+  const pids = out.split(/\s+/).filter(Boolean);
+  if (!pids.length) {
+    console.log(`port ${port} आधीच मोकळा आहे.`);
+    return;
+  }
+  killPids(pids, `port ${port} वापरणारा server`);
+}
+
+function killOrphanedChrome() {
+  console.log("\nautomation चा shared browser profile वापरणारे Chrome processes शोधतो...");
+  const out = runPS(
+    `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -like '*.browser-profiles*shared*' } | Select-Object -ExpandProperty ProcessId`
+  );
+  const pids = out.split(/\s+/).filter(Boolean);
+  if (!pids.length) {
+    console.log("असे कोणतेही Chrome process सापडले नाही.");
+    return;
+  }
+  killPids(pids, "automation चा Chrome");
+}
+
+const PORT = process.env.PORT || 5959;
+killPort(PORT);
+killOrphanedChrome();
+console.log("\nसाफ झाले. आता 'npm run server' पुन्हा सुरू करू शकता.");

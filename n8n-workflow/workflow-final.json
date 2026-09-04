@@ -1,0 +1,599 @@
+{
+  "name": "Excel → Gemini+Grok → Claude → Word (Docker · final)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Excel Upload",
+        "formDescription": "Titles असलेली Excel फाईल अपलोड करा",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Excel File",
+              "fieldType": "file",
+              "requiredField": true,
+              "acceptFileTypes": ".xlsx,.xls"
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "formSubmittedText": "फाईल मिळाली — काम सुरू झाले आहे. सर्व titles चे काम पूर्ण झाल्यावर output फोल्डरमधली Word फाईल आपोआप उघडेल. हा tab आता बंद करू शकता."
+            }
+          }
+        }
+      },
+      "id": "1",
+      "name": "Upload Excel",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -2400,
+        0
+      ],
+      "webhookId": "excel-upload-form"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$binary['Excel_File'].fileExtension}}",
+              "rightValue": "xlsx",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "2",
+      "name": "Detect Excel File",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "अपलोड केलेली फाईल .xlsx नाही. कृपया योग्य Excel (.xlsx) फाईल अपलोड करा."
+      },
+      "id": "16",
+      "name": "Invalid File Type",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        -2160,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/doc/start",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ start: true }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "21",
+      "name": "Start Word Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        -180
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "workflow सुरू होताच एकदाच चालतो (इथे फक्त 1 item असतो) — output फोल्डरमध्ये नवी (रिकामी) Word फाईल तयार करतो, पण अजून उघडत नाही (सर्व titles संपल्यावरच उघडेल). हा एक side-branch आहे, मुख्य data flow ला अडथळा नाही."
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "binaryPropertyName": "Excel_File",
+        "options": {}
+      },
+      "id": "3",
+      "name": "Read Excel",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1920,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "f1",
+              "leftValue": "={{$json.Status}}",
+              "rightValue": "PENDING",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4",
+      "name": "Get PENDING Titles",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -1680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "5",
+      "name": "Loop Over Titles",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/chat/gemini",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('Loop Over Titles').item.json.Title }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "6",
+      "name": "Gemini Existing Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1200,
+        -120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "notes": "BYPASS करायचे असल्यास: या नोडवर उजवे-क्लिक -> Deactivate. मग Claude ला फक्त Grok चे उत्तर जाईल."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/chat/grok",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('Loop Over Titles').item.json.Title }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "8",
+      "name": "Grok Existing Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1200,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "notes": "BYPASS करायचे असल्यास: या नोडवर उजवे-क्लिक -> Deactivate. मग Claude ला फक्त Gemini चे उत्तर जाईल."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "g1",
+              "name": "geminiOutput",
+              "type": "string",
+              "value": "={{ $json.response ? $json.response : ($json.error ? ('(Gemini Error: ' + JSON.stringify($json.error) + ')') : '') }}"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "17",
+      "name": "Rename Gemini Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1000,
+        -120
+      ],
+      "notes": "Gemini node Deactivate केला असेल तर इथे geminiOutput रिकामे राहते (bypass)."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "gr1",
+              "name": "grokOutput",
+              "type": "string",
+              "value": "={{ $json.response ? $json.response : ($json.error ? ('(Grok Error: ' + JSON.stringify($json.error) + ')') : '') }}"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "18",
+      "name": "Rename Grok Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1000,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "19",
+      "name": "Merge Gemini & Grok",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -820,
+        0
+      ],
+      "notes": "Gemini आणि Grok चे उत्तर एकाच item मध्ये आणतो. एखादा नोड bypass असला तरी तो branch passthrough करतो, त्यामुळे position match बरोबर राहतो."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cp1",
+              "name": "combinedText",
+              "type": "string",
+              "value": "={{ ($json.geminiOutput ? ('Gemini उत्तर:\\n' + $json.geminiOutput + '\\n\\n') : '') + ($json.grokOutput ? ('Grok उत्तर:\\n' + $json.grokOutput) : '') }}"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "20",
+      "name": "Build Claude Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -640,
+        0
+      ],
+      "notes": "जे उत्तर आले तेच एकत्र करतो — Gemini bypass असेल तर फक्त Grok, Grok bypass असेल तर फक्त Gemini."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/chat/claude",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.combinedText, title: $('Loop Over Titles').item.json.Title }) }}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "10",
+      "name": "Claude Existing Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "notes": "BYPASS करायचे असल्यास: या नोडवर उजवे-क्लिक -> Deactivate. मग Gemini + Grok चे उत्तर थेट Word फाईलमध्ये लाल रंगात सेव्ह होईल."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/doc/append",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $('Loop Over Titles').item.json.Title, text: ($json.response ? $json.response : $('Build Claude Prompt').item.json.combinedText), color: ($json.response ? 'black' : 'red') }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "22",
+      "name": "Append to Word",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput",
+      "notes": "प्रत्येक task चा निकाल Word फाईलमध्ये जोडून लगेच सेव्ह करतो. Claude चालला असेल तर काळा; Claude bypass असेल तर Gemini+Grok चा मजकूर लाल रंगात."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5959/doc/finish",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ finish: true }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "23",
+      "name": "Close Word Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1200,
+        320
+      ],
+      "notes": "सर्व titles संपल्यावर Word फाईल save करून बंद करतो."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r1",
+              "name": "resultFile",
+              "type": "string",
+              "value": "={{$json.docxPath}}"
+            },
+            {
+              "id": "r2",
+              "name": "textFile",
+              "type": "string",
+              "value": "={{$json.txtPath}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "15",
+      "name": "Final Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -960,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "Upload Excel": {
+      "main": [
+        [
+          {
+            "node": "Detect Excel File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Excel File": {
+      "main": [
+        [
+          {
+            "node": "Read Excel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Start Word Doc",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid File Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Excel": {
+      "main": [
+        [
+          {
+            "node": "Get PENDING Titles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PENDING Titles": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Titles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Titles": {
+      "main": [
+        [
+          {
+            "node": "Close Word Doc",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gemini Existing Chat",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Grok Existing Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Existing Chat": {
+      "main": [
+        [
+          {
+            "node": "Rename Gemini Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok Existing Chat": {
+      "main": [
+        [
+          {
+            "node": "Rename Grok Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename Gemini Output": {
+      "main": [
+        [
+          {
+            "node": "Merge Gemini & Grok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename Grok Output": {
+      "main": [
+        [
+          {
+            "node": "Merge Gemini & Grok",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Gemini & Grok": {
+      "main": [
+        [
+          {
+            "node": "Build Claude Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Claude Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude Existing Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Existing Chat": {
+      "main": [
+        [
+          {
+            "node": "Append to Word",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Word": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Titles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Close Word Doc": {
+      "main": [
+        [
+          {
+            "node": "Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
